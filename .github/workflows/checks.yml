@@ -1,0 +1,131 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # /ship dispatches a run after flipping the repo public, since the
+  # visibility flip itself triggers no push event.
+  workflow_dispatch:
+
+# Allow the deploy job to publish to GitHub Pages.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # Jobs only run once the repo is public: private-phase pushes would drain
+    # the org's shared free Actions pool, and `pnpm check` runs the same
+    # sensors locally while you build (public repos get unlimited minutes, so
+    # cost ends at the flip).
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history so the secret scan can see all commits
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build and run the spec
+        run: pnpm check
+      - name: Check the process evidence
+        # skipped in the template repo itself, where PROCESS.md is still the
+        # boilerplate every student replaces
+        if: ${{ !github.event.repository.is_template }}
+        run: pnpm check:evidence
+      - name: Check internal links
+        # Internal links only. linkinator checks outbound links by default, so
+        # someone else's rate limiter or outage would redden a build with
+        # nothing wrong in it --- crit 2 alone points the whole cohort at real
+        # orgs' sites and their socials. The regex skips anything not on the
+        # local origin the built site is served from; both spellings are named
+        # because a bare `--skip "^https?://"` matches that origin too and
+        # passes having scanned zero links. The stack skill rewrites the
+        # command below when it converts the repo to Astro, and carries the
+        # same skip over, so this comment holds either way.
+        run: pnpm dlx linkinator ./dist --silent --skip "^https?://(?!localhost|127)"
+      - name: Scan for committed secrets
+        # Pinned, both halves: the SHA fixes the action's script, and `version`
+        # fixes the scanner image, which otherwise floats on :latest. These two
+        # steps run in every repo in the course, so an upstream change would
+        # break the whole cohort's CI in the same hour. Bump between semesters.
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          version: "3.96.0"
+          extra_args: --only-verified
+      - name: Scan for a committed course key
+        # The scan above reports only secrets it can confirm are live, and a
+        # course key has no verifier a runner can reach --- see
+        # .github/trufflehog.yml, which matches its shape instead.
+        # CustomRegex scopes this pass to that file's detector, so the built-in
+        # ones don't add unverified noise on top of it.
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          version: "3.96.0"
+          extra_args: >-
+            --config=.github/trufflehog.yml
+            --include-detectors=CustomRegex --results=unverified
+            --no-verification
+
+  deploy:
+    # Deliberately not `needs: check`. A blocked deploy does not take a site
+    # offline --- Pages keeps serving the last deployment --- so the site
+    # silently freezes at the last green commit while the repo moves on, and
+    # the crit sweep reads a bare HTTP 200 as live. The tutor then screenshots
+    # last week's work as this week's, with nothing in the capture to say so.
+    #
+    # The crit mark already prices a red check: green at the sweep earns the
+    # full mark for that half, red or absent earns half of it. Gating the
+    # deploy adds a second, uncalibrated penalty on top --- and on a first ship
+    # it costs the whole of Mark A, because nothing has deployed, the URL 404s
+    # and the liveness floor fails.
+    #
+    # The deploy runs its own `pnpm build`, which is the gate that matters
+    # here: a site that cannot build still cannot ship. The spec walks the
+    # built `dist/` for quality, not for deployability.
+    #
+    # Pages can't serve a private repo on the free org anyway; the visibility
+    # condition keeps a private-phase run from failing confusingly here.
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./dist
+      - id: deploy
+        uses: actions/deploy-pages@v5
+      - name: Verify the deployed site is online
+        run: |
+          url="${{ steps.deploy.outputs.page_url }}"
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)
+            if [ "$code" = "200" ]; then echo "online: $url"; exit 0; fi
+            echo "attempt $i: HTTP $code, retrying in 10s..."
+            sleep 10
+          done
+          echo "site did not return 200"; exit 1
