@@ -31,7 +31,7 @@ export const PERSISTENT_SPEED = 26;
 export const PERSISTENT_FIRE_INTERVAL_MS = 1800;
 export const PERSISTENT_PROJECTILE_SPEED = 130;
 export const PERSISTENT_SPAWN_INTERVAL_MS = 2600;
-export const PERSISTENT_MAX_COUNT = 6;
+export const PERSISTENT_MAX_COUNT = 4; // was 6 - see PROCESS.md for the playtest that caused this
 
 export const UNSTABLE_SPEED = 40;
 export const UNSTABLE_FIRE_INTERVAL_MS = 3200;
