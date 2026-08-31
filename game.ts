@@ -17,6 +17,7 @@ import {
   UNSTABLE_PROJECTILE_SPEED,
   UNSTABLE_SPAWN_INTERVAL_MS,
   VICTORY_DURATION_MS,
+  COUNTDOWN_MS,
 } from "./constants";
 import { clamp, insetBounds, circlesOverlap, type Bounds } from "./geometry";
 import {
@@ -46,7 +47,7 @@ import {
 import { createPickup, stepPickup, type Pickup } from "./pickup";
 import { createEffect, isEffectDone, type Effect } from "./effects";
 
-export type GamePhase = "playing" | "won" | "lost";
+export type GamePhase = "countdown" | "playing" | "won" | "lost";
 
 export interface PointerInput {
   x: number;
@@ -57,6 +58,7 @@ export interface GameState {
   phase: GamePhase;
   elapsedMs: number;
   endedAt: number | null;
+  countdownEndAt: number;
   player: Player;
   enemies: RuntimeEnemy[];
   projectiles: Projectile[];
@@ -79,9 +81,10 @@ export function createGame(now: number): GameState {
   const startX = ARENA_WIDTH / 2;
   const startY = ARENA_HEIGHT * 0.78;
   return {
-    phase: "playing",
+    phase: "countdown",
     elapsedMs: 0,
     endedAt: null,
+    countdownEndAt: now + COUNTDOWN_MS,
     player: createPlayer(startX, startY, now),
     enemies: [],
     projectiles: [],
@@ -94,6 +97,16 @@ export function createGame(now: number): GameState {
 }
 
 export function updateGame(state: GameState, dt: number, now: number, pointer: PointerInput): void {
+  if (state.phase === "countdown") {
+    if (now >= state.countdownEndAt) {
+      state.phase = "playing";
+      state.nextPersistentSpawnAt = now + 900;
+      state.nextUnstableSpawnAt = now + 2400;
+      state.nextPickupCheckAt = now + 3000;
+    }
+    return;
+  }
+
   if (state.phase === "playing") {
     state.elapsedMs += dt * 1000;
 

@@ -53,3 +53,4 @@ export const PROJECTILE_RADIUS_PLAYER = 3;
 export const PROJECTILE_RADIUS_ENEMY = 3;
 
 export const VICTORY_DURATION_MS = 60000; // survive this long to win
+export const COUNTDOWN_MS = 3000; // frozen opening countdown before play begins

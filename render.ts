@@ -6,6 +6,7 @@ import {
   PICKUP_RADIUS,
   PLAYER_CHARGE_MS,
   PLAYER_RADIUS,
+  VICTORY_DURATION_MS,
 } from "./constants";
 import { chargeProgress, isInvulnerable, type Player } from "./player";
 import type { RuntimeEnemy } from "./enemies";
@@ -15,15 +16,22 @@ import { effectProgress, type Effect } from "./effects";
 import type { GameState } from "./game";
 
 const COLORS = {
-  background: "#05070f",
+  backgroundTop: "#03040c",
+  backgroundBottom: "#0a1030",
   star: "#9fb3d9",
   hull: "#eafcff",
+  hullDark: "#8fa6c9",
   accent: "#5fd4ff",
+  wingDark: "#2c3a6b",
+  wingAccent: "#5fd4ff",
+  navLeft: "#ff5a5a",
+  navRight: "#6dffb0",
   engineHot: "#ffd166",
   engineCool: "#ff8a3d",
   chargeRing: "#7cffcb",
   persistent: "#ff5a36",
   persistentDark: "#9c2f18",
+  persistentAccent: "#ffe27a",
   unstable: "#9c8bff",
   unstableBright: "#d7cbff",
   boltPlayer: "#eafcff",
@@ -33,6 +41,11 @@ const COLORS = {
   pickupCore: "#ffffff",
   heartFull: "#ff4d6d",
   heartEmpty: "#3a1c24",
+  planetSaturnBody: "#d9b177",
+  planetSaturnBand: "#c99a5c",
+  planetSaturnRing: "#e8d2a3",
+  planetJupiterBody: "#c97b5a",
+  planetJupiterBand: "#8a4a3a",
 };
 
 interface Star {
@@ -42,7 +55,7 @@ interface Star {
   speed: number;
 }
 
-const STAR_COUNT = 36;
+const STAR_COUNT = 40;
 const stars: Star[] = Array.from({ length: STAR_COUNT }, () => ({
   x: Math.random() * ARENA_WIDTH,
   y: Math.random() * ARENA_HEIGHT,
@@ -50,30 +63,97 @@ const stars: Star[] = Array.from({ length: STAR_COUNT }, () => ({
   speed: 6 + Math.random() * 14,
 }));
 
+interface Planet {
+  x: number;
+  y: number;
+  radius: number;
+  speed: number;
+  kind: "saturn" | "jupiter";
+}
+
+// Purely decorative, non-interactive backdrop dressing --- kept at reduced
+// alpha and drawn behind the starfield so it never competes visually with
+// gameplay-relevant layers.
+const PLANETS: Planet[] = [
+  { x: ARENA_WIDTH * 0.24, y: ARENA_HEIGHT * 0.15, radius: 26, speed: 2, kind: "saturn" },
+  { x: ARENA_WIDTH * 0.78, y: ARENA_HEIGHT * 0.7, radius: 18, speed: 1, kind: "jupiter" },
+];
+
 export function draw(ctx: CanvasRenderingContext2D, state: GameState, now: number): void {
   ctx.clearRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
-  drawBackground(ctx, now, state.phase);
+  // The background animation is driven off a frozen clock during the
+  // countdown so the whole scene genuinely holds still, not just the sim.
+  const bgNow = state.phase === "countdown" ? state.countdownEndAt : now;
+  drawBackground(ctx, bgNow, state.phase);
   drawPickup(ctx, state.pickup, now);
   drawEnemies(ctx, state.enemies, now);
   drawProjectiles(ctx, state.projectiles);
   drawEffects(ctx, state.effects, now);
   drawPlayer(ctx, state.player, now, state.phase);
-  drawHearts(ctx, state.player);
-  if (state.phase !== "playing" && state.endedAt !== null) {
+  drawHud(ctx, state, now);
+  if (state.phase === "countdown") {
+    drawCountdown(ctx, state.countdownEndAt, now);
+  }
+  if ((state.phase === "won" || state.phase === "lost") && state.endedAt !== null) {
     drawEndOverlay(ctx, state.phase, state.endedAt, now);
   }
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, now: number, phase: GameState["phase"]): void {
-  ctx.fillStyle = COLORS.background;
+  const gradient = ctx.createLinearGradient(0, 0, 0, ARENA_HEIGHT);
+  gradient.addColorStop(0, COLORS.backgroundTop);
+  gradient.addColorStop(1, COLORS.backgroundBottom);
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
   const speedMultiplier = phase === "won" ? 4 : 1;
+  const drift = (now / 1000) * speedMultiplier;
+
+  for (const planet of PLANETS) {
+    const wrap = ARENA_HEIGHT + planet.radius * 4;
+    const y = ((planet.y + drift * planet.speed) % wrap) - planet.radius * 2;
+    drawPlanet(ctx, planet.x, y, planet.radius, planet.kind);
+  }
+
   ctx.fillStyle = COLORS.star;
   for (const star of stars) {
-    const y = (star.y + (now / 1000) * star.speed * speedMultiplier) % ARENA_HEIGHT;
+    const y = (star.y + drift * star.speed) % ARENA_HEIGHT;
     ctx.globalAlpha = star.size === 1 ? 0.5 : 0.9;
     ctx.fillRect(Math.round(star.x), Math.round(y), star.size, star.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPlanet(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  kind: Planet["kind"],
+): void {
+  ctx.globalAlpha = 0.5;
+  if (kind === "saturn") {
+    ctx.fillStyle = COLORS.planetSaturnBody;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS.planetSaturnBand;
+    ctx.fillRect(x - r, y - r * 0.18, r * 2, r * 0.28);
+    ctx.strokeStyle = COLORS.planetSaturnRing;
+    ctx.lineWidth = Math.max(1, r * 0.14);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.7, r * 0.5, -0.35, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = COLORS.planetJupiterBody;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS.planetJupiterBand;
+    for (let i = -2; i <= 2; i++) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(x - r, y + i * r * 0.35 - r * 0.08, r * 2, r * 0.16);
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -92,30 +172,50 @@ function drawPlayer(
     return;
   }
 
-  // Engine flare beneath the hull; brighter and longer while moving.
-  const flareLen = 3 + player.engineFlare * 9;
-  const flareColor = player.engineFlare > 0.5 ? COLORS.engineHot : COLORS.engineCool;
-  ctx.fillStyle = flareColor;
-  ctx.globalAlpha = 0.55 + player.engineFlare * 0.4;
-  ctx.beginPath();
-  ctx.moveTo(x - 3, y + r * 0.5);
-  ctx.lineTo(x + 3, y + r * 0.5);
-  ctx.lineTo(x, y + r * 0.5 + flareLen);
-  ctx.closePath();
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  const active = phase !== "countdown";
+
+  // Twin engine flares; brighter and longer while moving. Held to a faint
+  // idle glow during the frozen countdown instead of animating.
+  if (active) {
+    const flareLen = 3 + player.engineFlare * 8;
+    const flareColor = player.engineFlare > 0.5 ? COLORS.engineHot : COLORS.engineCool;
+    ctx.fillStyle = flareColor;
+    ctx.globalAlpha = 0.55 + player.engineFlare * 0.4;
+    for (const side of [-1, 1]) {
+      const bx = x + side * r * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(bx - 1.6, y + r * 0.55);
+      ctx.lineTo(bx + 1.6, y + r * 0.55);
+      ctx.lineTo(bx, y + r * 0.55 + flareLen);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.fillStyle = COLORS.engineCool;
+    ctx.globalAlpha = 0.35;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(x + side * r * 0.45, y + r * 0.55, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // Charge ring, visible while charging and not yet fully charged, plus a
-  // brief bright pulse right at full charge.
-  const progress = chargeProgress(player, now);
-  if (player.charging && progress > 0) {
-    ctx.strokeStyle = COLORS.chargeRing;
-    ctx.globalAlpha = progress >= 1 ? 0.9 : 0.35 + progress * 0.4;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x, y, r + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, progress));
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+  // brief bright pulse right at full charge. Suppressed during the
+  // countdown so the ship reads as genuinely paused.
+  if (active) {
+    const progress = chargeProgress(player, now);
+    if (player.charging && progress > 0) {
+      ctx.strokeStyle = COLORS.chargeRing;
+      ctx.globalAlpha = progress >= 1 ? 0.9 : 0.35 + progress * 0.4;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, progress));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Invulnerability blink.
@@ -123,20 +223,66 @@ function drawPlayer(
     ctx.globalAlpha = 0.4;
   }
 
-  ctx.fillStyle = COLORS.hull;
+  // Swept wings, drawn behind the fuselage so the ship reads much wider
+  // (and so visibly larger than either enemy silhouette) than its hitbox.
+  ctx.fillStyle = COLORS.wingDark;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(x + side * r * 0.35, y - r * 0.1);
+    ctx.lineTo(x + side * r * 1.7, y + r * 0.75);
+    ctx.lineTo(x + side * r * 0.9, y + r * 0.85);
+    ctx.lineTo(x + side * r * 0.25, y + r * 0.35);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = COLORS.wingAccent;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(x + side * r * 0.35, y - r * 0.1);
+    ctx.lineTo(x + side * r * 1.7, y + r * 0.75);
+    ctx.lineTo(x + side * r * 1.4, y + r * 0.78);
+    ctx.lineTo(x + side * r * 0.3, y + r * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Wingtip nav lights --- a small asymmetric detail (red left, green right).
+  ctx.fillStyle = COLORS.navLeft;
+  ctx.fillRect(x - r * 1.68, y + r * 0.72, 1.4, 1.4);
+  ctx.fillStyle = COLORS.navRight;
+  ctx.fillRect(x + r * 1.68 - 1.4, y + r * 0.72, 1.4, 1.4);
+
+  // Fuselage.
+  ctx.fillStyle = COLORS.hullDark;
   ctx.beginPath();
-  ctx.moveTo(x, y - r);
-  ctx.lineTo(x + r * 0.75, y + r * 0.6);
-  ctx.lineTo(x, y + r * 0.25);
-  ctx.lineTo(x - r * 0.75, y + r * 0.6);
+  ctx.moveTo(x, y - r * 1.3);
+  ctx.lineTo(x + r * 0.55, y + r * 0.1);
+  ctx.lineTo(x + r * 0.4, y + r * 0.75);
+  ctx.lineTo(x, y + r * 0.55);
+  ctx.lineTo(x - r * 0.4, y + r * 0.75);
+  ctx.lineTo(x - r * 0.55, y + r * 0.1);
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = COLORS.accent;
+  ctx.fillStyle = COLORS.hull;
   ctx.beginPath();
-  ctx.arc(x, y - r * 0.15, r * 0.28, 0, Math.PI * 2);
+  ctx.moveTo(x, y - r * 1.3);
+  ctx.lineTo(x + r * 0.4, y + r * 0.05);
+  ctx.lineTo(x, y + r * 0.45);
+  ctx.lineTo(x - r * 0.4, y + r * 0.05);
+  ctx.closePath();
   ctx.fill();
 
+  // Canopy.
+  ctx.fillStyle = COLORS.accent;
+  ctx.beginPath();
+  ctx.ellipse(x, y - r * 0.35, r * 0.22, r * 0.34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = COLORS.hull;
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  ctx.arc(x - r * 0.06, y - r * 0.5, r * 0.08, 0, Math.PI * 2);
+  ctx.fill();
   ctx.globalAlpha = 1;
 }
 
@@ -167,14 +313,45 @@ function drawEnemies(ctx: CanvasRenderingContext2D, enemies: RuntimeEnemy[], now
   ctx.globalAlpha = 1;
 }
 
+// A squat, wide armoured gunship --- deliberately flat and boxy so its
+// silhouette reads nothing like the player's tall swept-wing fighter or the
+// unstable enemy's spinning spiked crystal.
 function drawPersistentEnemy(ctx: CanvasRenderingContext2D, x: number, y: number): void {
   const r = ENEMY_RADIUS;
   ctx.fillStyle = COLORS.persistentDark;
-  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.beginPath();
+  ctx.moveTo(x - r * 1.3, y);
+  ctx.lineTo(x - r * 0.7, y - r * 0.9);
+  ctx.lineTo(x + r * 0.7, y - r * 0.9);
+  ctx.lineTo(x + r * 1.3, y);
+  ctx.lineTo(x + r * 0.7, y + r * 0.9);
+  ctx.lineTo(x - r * 0.7, y + r * 0.9);
+  ctx.closePath();
+  ctx.fill();
+
   ctx.fillStyle = COLORS.persistent;
-  ctx.fillRect(x - r + 1.5, y - r + 1.5, r * 2 - 3, r * 2 - 3);
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.95, y);
+  ctx.lineTo(x - r * 0.5, y - r * 0.65);
+  ctx.lineTo(x + r * 0.5, y - r * 0.65);
+  ctx.lineTo(x + r * 0.95, y);
+  ctx.lineTo(x + r * 0.5, y + r * 0.65);
+  ctx.lineTo(x - r * 0.5, y + r * 0.65);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = COLORS.persistentDark;
+  ctx.fillRect(x - r * 1.35, y - r * 0.25, r * 0.4, r * 0.5);
+  ctx.fillRect(x + r * 0.95, y - r * 0.25, r * 0.4, r * 0.5);
+
+  ctx.fillStyle = COLORS.persistentAccent;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
+// A spinning spiked crystal that visibly sheds pixels --- reads as
+// unstable/fragile at a glance, unlike the persistent enemy's flat armour.
 function drawUnstableEnemy(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -183,17 +360,30 @@ function drawUnstableEnemy(
   now: number,
 ): void {
   const r = ENEMY_RADIUS;
+  const spikes = 5;
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.PI / 4);
+  ctx.rotate(now / 260);
   ctx.fillStyle = COLORS.unstable;
-  ctx.fillRect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5);
+  ctx.beginPath();
+  for (let i = 0; i < spikes * 2; i++) {
+    const angle = (i / (spikes * 2)) * Math.PI * 2;
+    const radius = i % 2 === 0 ? r * 1.05 : r * 0.42;
+    const px = Math.cos(angle) * radius;
+    const py = Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 
   ctx.fillStyle = COLORS.unstableBright;
+  ctx.globalAlpha = 0.6 + 0.4 * Math.sin(now / 120 + id);
   ctx.beginPath();
-  ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 0.32, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = 1;
 
   // Shed a couple of flickering pixels around it so it visibly degrades.
   const seed = id * 137.5;
@@ -315,6 +505,22 @@ function drawEffects(ctx: CanvasRenderingContext2D, effects: Effect[], now: numb
   ctx.globalAlpha = 1;
 }
 
+function drawHud(ctx: CanvasRenderingContext2D, state: GameState, now: number): void {
+  drawHearts(ctx, state.player);
+
+  if (state.phase === "playing") {
+    const remainingMs = Math.max(0, VICTORY_DURATION_MS - state.elapsedMs);
+    const seconds = Math.ceil(remainingMs / 1000);
+    ctx.fillStyle = COLORS.hull;
+    ctx.globalAlpha = 0.85;
+    ctx.font = "9px monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(seconds), ARENA_WIDTH - 6, HUD_HEIGHT / 2);
+    ctx.globalAlpha = 1;
+  }
+}
+
 function drawHearts(ctx: CanvasRenderingContext2D, player: Player): void {
   const size = 7;
   const gap = 2;
@@ -337,6 +543,36 @@ function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.lineTo(x + size / 2, y);
   ctx.closePath();
   ctx.fill();
+}
+
+function drawCountdown(ctx: CanvasRenderingContext2D, countdownEndAt: number, now: number): void {
+  const msLeft = Math.max(0, countdownEndAt - now);
+  const secondsLeft = Math.max(1, Math.ceil(msLeft / 1000));
+  const intoSecond = (msLeft % 1000) / 1000;
+  const scale = 0.75 + (1 - intoSecond) * 0.35;
+
+  const cx = ARENA_WIDTH / 2;
+  const cy = ARENA_HEIGHT * 0.42;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+
+  ctx.strokeStyle = COLORS.chargeRing;
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, 18, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = COLORS.hull;
+  ctx.globalAlpha = 1;
+  ctx.font = "bold 22px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(secondsLeft), 0, 1);
+
+  ctx.restore();
 }
 
 function drawEndOverlay(

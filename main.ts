@@ -36,7 +36,7 @@ function frame(now: number): void {
 
   if (pointer.restartRequested) {
     pointer.restartRequested = false;
-    if (state.phase !== "playing") {
+    if (state.phase === "won" || state.phase === "lost") {
       state = createGame(now);
     }
   }
