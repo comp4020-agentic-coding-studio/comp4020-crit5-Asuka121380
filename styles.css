@@ -53,6 +53,116 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+/* Arcade cabinet shell: purely decorative chrome around the real game
+   screen. Every part of it is pointer-events: none so it can never steal
+   input from the canvas, which remains the only interactive control
+   surface. */
+.cabinet {
+  width: 100%;
+  height: 100%;
+  max-width: min(96vw, 1600px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(3px, 0.6vh, 10px);
+  pointer-events: none;
+}
+
+.marquee {
+  flex: 0 0 auto;
+  width: min(100%, 640px);
+  height: clamp(14px, 4vh, 32px);
+  border-radius: 10px 10px 4px 4px;
+  background: linear-gradient(180deg, #ffce5c, #ff7a3d 60%, #b03e1c);
+  border: 2px solid #3a1c10;
+  box-shadow:
+    0 0 18px rgba(255, 170, 90, 0.5),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.marquee span {
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  font-size: clamp(9px, 2.2vh, 18px);
+  color: #241005;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
+.cabinet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  gap: clamp(4px, 1.5vw, 22px);
+}
+
+/* Side panels fill the space either side of the (necessarily portrait)
+   screen that used to sit empty --- they carry the decorative controls and
+   grow with the viewport, but never at the screen's expense. */
+.side-panel {
+  flex: 1 1 140px;
+  max-width: 220px;
+  min-width: 48px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(135deg, #23264a 0 8px, #1a1c38 8px 16px);
+  box-shadow: inset 0 0 0 2px #0c0d1e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen-stack {
+  flex: 4 1 640px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bezel {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(6px, 2vh, 20px);
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #3a3f5c, #14152a 70%);
+  box-shadow:
+    0 0 0 2px #05060f,
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+.screen-frame {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #05070f;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.8);
+  pointer-events: auto;
 }
 
 #game {
@@ -62,4 +172,75 @@ main {
   background: #05070f;
   touch-action: none;
   display: block;
+}
+
+.joystick {
+  position: relative;
+  width: clamp(28px, 6vh, 64px);
+  height: clamp(28px, 6vh, 64px);
+}
+
+.joystick-base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a4e63, #16171f 70%);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.joystick-stick {
+  position: absolute;
+  left: 50%;
+  top: 16%;
+  width: 22%;
+  height: 55%;
+  transform: translateX(-50%);
+  border-radius: 40% 40% 10px 10px;
+  background: linear-gradient(180deg, #ff5a5a, #8a1c1c);
+}
+
+.button-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.8vh, 16px);
+}
+
+.arcade-button {
+  width: clamp(14px, 3.2vh, 30px);
+  height: clamp(14px, 3.2vh, 30px);
+  border-radius: 50%;
+  box-shadow:
+    0 3px 4px rgba(0, 0, 0, 0.5),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.3);
+}
+
+.arcade-button--red {
+  background: radial-gradient(circle at 35% 30%, #ff8a7a, #b3231c);
+}
+
+.arcade-button--yellow {
+  background: radial-gradient(circle at 35% 30%, #ffe08a, #c98a10);
+}
+
+.arcade-button--blue {
+  background: radial-gradient(circle at 35% 30%, #8ac8ff, #1d5fb3);
+}
+
+/* Compact layout: narrow or tall (phone) viewports drop the side panels so
+   the actual screen gets almost all the available space, the same way the
+   original phone-shaped layout did. */
+@media (max-width: 640px), (max-aspect-ratio: 3/4) {
+  .side-panel {
+    display: none;
+  }
+
+  .marquee {
+    height: clamp(14px, 3.5vh, 26px);
+  }
+
+  .bezel {
+    border-radius: 8px;
+    padding: clamp(3px, 1.2vh, 10px);
+  }
 }

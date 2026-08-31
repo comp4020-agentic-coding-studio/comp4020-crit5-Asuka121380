@@ -28,7 +28,33 @@
     </header>
     <main>
       <h1>Thunder Wing</h1>
-      <canvas id="game"></canvas>
+      <div class="cabinet">
+        <div class="marquee" aria-hidden="true">
+          <span>THUNDER&nbsp;WING</span>
+        </div>
+        <div class="cabinet-body">
+          <div class="side-panel side-panel--left" aria-hidden="true">
+            <div class="joystick">
+              <div class="joystick-base"></div>
+              <div class="joystick-stick"></div>
+            </div>
+          </div>
+          <div class="screen-stack">
+            <div class="bezel">
+              <div class="screen-frame">
+                <canvas id="game"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="side-panel side-panel--right" aria-hidden="true">
+            <div class="button-row">
+              <div class="arcade-button arcade-button--red"></div>
+              <div class="arcade-button arcade-button--yellow"></div>
+              <div class="arcade-button arcade-button--blue"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>
