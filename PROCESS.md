@@ -13,19 +13,23 @@ cover every deliverable.
 
 ## What I built
 
-**Stillfire**, a pointer-controlled vertical shooter with zero on-screen text.
-The ship follows the pointer; moving disables firing, and holding still charges
-a shot that then auto-fires on an interval. Two enemy kinds read differently on
-sight: solid orange squares (persistent) that must be shot down, and flickering
-purple diamonds (unstable) that either expire harmlessly on their own or, if
-shot, split into two persistent enemies with a brief grace period so the split
+**Thunder Wing** (originally built as *Stillfire*, renamed in a later revision
+pass — see moment 5), a pointer-controlled vertical shooter with zero on-screen
+text besides a countdown and survival timer. The ship follows the pointer;
+moving disables firing, and holding still charges a shot that then auto-fires
+on an interval. Two enemy kinds read differently on sight: an armoured
+hexagonal gunship (persistent) that must be shot down, and a spinning spiked
+crystal (unstable) that either expires harmlessly on its own or, if shot,
+splits into two persistent enemies with a brief grace period so the split
 isn't an unfair instant hit. Health is five pixel hearts; a wandering green
 cross appears only while the player is missing health and heals on touch. The
-game ends in a clearly distinct loss (dark red vignette) or win (warm gold
-vignette, after surviving 60 seconds), and any tap/click restarts from either
-end state. Gameplay state (`game.ts`, `enemies.ts`, `player.ts`, `projectiles.ts`,
-`pickup.ts`, `motion.ts`, `effects.ts`) is kept separate from the pure Canvas
-renderer (`render.ts`) and from pointer input (`input.ts`).
+game opens on a frozen 3-second countdown, then ends in a clearly distinct
+loss (dark red vignette) or win (warm gold vignette, after surviving 60
+seconds), and any tap/click restarts from either end state. The whole thing is
+presented inside a decorative, responsive arcade-cabinet frame. Gameplay state
+(`game.ts`, `enemies.ts`, `player.ts`, `projectiles.ts`, `pickup.ts`,
+`motion.ts`, `effects.ts`) is kept separate from the pure Canvas renderer
+(`render.ts`) and from pointer input (`input.ts`).
 
 ## The moments that mattered
 
@@ -78,6 +82,36 @@ renderer (`render.ts`) and from pointer input (`input.ts`).
    passed clean.
    [`03facef`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/03facef)
 
+5. **Catching a countdown freeze that was simulation-only, not visual, before
+   it shipped.** Adding a `"countdown"` game phase and returning early from
+   `updateGame` freezes game *state*, but `drawBackground`'s starfield drift
+   and `drawPlayer`'s charge-ring/engine-flare progress are both driven
+   directly by the wall-clock `now` passed into `draw`, not by state that had
+   just stopped changing — so the scene would have kept visibly animating
+   through a countdown that was supposedly frozen. I caught this by tracing
+   where `now` flows into the renderer before running anything, and fixed it
+   by feeding `draw` a frozen `bgNow` during the countdown and gating the
+   player's charge/flare animation behind an `active = phase !== "countdown"`
+   flag, so the ship reads as paused rather than mid-charge.
+   [`4f10dda`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/4f10dda)
+
+6. **Measuring the cabinet layout instead of trusting how it looked.** The
+   brief asked the desktop game to use available screen space "more
+   effectively," so I built the cabinet with a control deck (joystick and
+   buttons) below the screen. It looked plausible in the browser. Only after
+   scripting a Playwright pass that measured `#game`'s actual bounding box
+   (490x872 at 1920x1080) and comparing it against the pre-cabinet scale-to-fit
+   math (up to 607x1080) did I notice the deck had made the real play area
+   *smaller* than before — it was eating the vertical space the canvas used to
+   own outright, the opposite of the brief's intent. The fix was to move the
+   joystick and buttons into side panels beside the screen instead, spending
+   only the horizontal letterboxing that a portrait game already wastes on a
+   landscape monitor. Re-measuring after the fix showed 552x981.5 — most of
+   the loss recovered, with the remainder being the accepted cost of a thin
+   marquee bar. Nothing here was code that failed a test; the check suite
+   couldn't have caught it, only a measured screenshot could.
+   [`9fd519b`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/9fd519b)
+
 ## Verification
 
 `pnpm check` (typecheck + build + `vitest run`) is green: 3 test files, 21
@@ -96,6 +130,18 @@ clean --- no errors, warnings, or failed requests from the shipped game code.
 repeated `getImageData` calls in a throwaway reactive-dodge script used to
 probe for the win condition --- the shipped game never calls `getImageData`,
 so this is a test-tooling artifact, not a game defect.)
+
+After the Thunder Wing revision (rename, countdown/timer, new art, arcade
+cabinet), the same two-viewport Playwright pass was re-run against the
+rebuilt `dist/` output, covering: the countdown numeral and ring on load, the
+transition into "playing" once it elapses, the survival timer counting down,
+still-to-fire and moving with the new sprites and planet background visible,
+a midgame screenshot, and --- on desktop --- bounding-box measurements of the
+canvas and both cabinet side panels to confirm the layout-regression fix
+(moment 6) actually held after landing. On mobile, a computed-style check
+confirmed the side panels collapse to `display: none` under the compact media
+query, leaving the canvas essentially unchanged from the pre-cabinet phone
+layout. Zero console/pageerror/requestfailed events across either viewport.
 
 ## Before you ship
 
