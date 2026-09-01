@@ -80,3 +80,22 @@ behind. `spec/README.md` draws the line.
 - **Construct `AudioContext` only inside an explicit user-gesture handler.**
   Browsers block autoplay; building the context earlier either throws or
   leaves it suspended.
+
+## Crit 5 lessons worth carrying
+
+- **Keep game rules independent of Canvas rendering.** State transitions such
+  as expiry, destruction, splitting, damage and healing should be deterministic
+  functions that focused tests can exercise without a browser.
+- **A frozen phase must freeze visual time as well as simulation time.** If a
+  renderer reads the wall clock directly, backgrounds and charge animations can
+  continue moving even while the state update loop is paused.
+- **`imageSmoothingEnabled = false` does not pixelate vector paths.** Canvas
+  still anti-aliases arcs, ellipses, rotations and arbitrary polygons. True
+  pixel art needs integer-snapped raster primitives, bitmap sprites or discrete
+  animation frames.
+- **Verify perceptual distinctions at runtime.** Different source names do not
+  prove that two sprites or sounds read differently; inspect rendered pixels and
+  capture the actual waveform and frequency values scheduled by Web Audio.
+- **Re-run the real artefact after every presentation pass.** A green unit suite
+  cannot detect an overcrowded arena, a cabinet that shrinks the play area, an
+  unreadable phone layout, or console failures from missing assets.
