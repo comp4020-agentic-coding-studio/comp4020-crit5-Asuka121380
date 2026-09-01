@@ -112,6 +112,36 @@ presented inside a decorative, responsive arcade-cabinet frame. Gameplay state
    couldn't have caught it, only a measured screenshot could.
    [`9fd519b`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/9fd519b)
 
+7. **Discovering `ctx.imageSmoothingEnabled = false` doesn't do what a pixel-art
+   brief needs.** That flag only affects `drawImage` scaling — Canvas2D still
+   anti-aliases every filled/stroked vector path (`ctx.arc`, `ctx.ellipse`, a
+   non-90°-multiple `ctx.rotate`), and nearly all of the pre-revision
+   `render.ts` was built from exactly those calls. I confirmed this by reading
+   the spec rather than assuming the existing flag was already sufficient,
+   then wrote `pixels.ts` (a Bresenham circle, a scanline polygon rasterizer,
+   integer-snapped rects) so every sprite is drawn from primitives that round
+   to whole pixels by construction, and replaced continuous rotation (the
+   unstable enemy's spin, projectile headings) with discrete animation frames
+   — a deliberate pixel-art technique, not a compromise.
+   [`07f1ee4`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/07f1ee4)
+
+8. **Proving the audio gesture-gate and SFX distinctness from outside the
+   game, without touching shipped code.** The brief requires `AudioContext`
+   to exist only after a real user gesture, and player/enemy fire to be
+   audibly distinct. Rather than take my own implementation's word for it, I
+   wrapped `AudioContext`'s constructor and `AudioParam.setValueAtTime` from
+   a Playwright script before any app code ran, confirming zero contexts
+   existed before the first synthetic `pointerdown` and exactly one
+   `"running"` context after, then read back the actual scheduled
+   frequencies to confirm `playerFire` (square, 880Hz) and `enemyFire`
+   (sawtooth, 220Hz) really are two octaves and a waveform apart at runtime,
+   not just in the source. (An early version of this check read
+   `frequency.value` directly after `setValueAtTime` and got 440Hz back for
+   everything — a Web Audio quirk where that getter doesn't reliably reflect
+   a just-scheduled value — so I fixed the harness to capture the argument
+   passed to `setValueAtTime` instead.)
+   [`c601cc5`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-Asuka121380/commit/c601cc5)
+
 ## Verification
 
 `pnpm check` (typecheck + build + `vitest run`) is green: 3 test files, 21
@@ -142,6 +172,26 @@ canvas and both cabinet side panels to confirm the layout-regression fix
 confirmed the side panels collapse to `display: none` under the compact media
 query, leaving the canvas essentially unchanged from the pre-cabinet phone
 layout. Zero console/pageerror/requestfailed events across either viewport.
+
+After the pixel-art and 8-bit audio revision (moments 7-8), `pnpm check` and
+`pnpm check:evidence` were re-run clean (21/21 tests, same `dist/` build
+budget), then a fresh two-viewport Playwright pass against the rebuilt
+`dist/` confirmed: a scanline sample through the mid-arena at both viewports
+found only 5 exact colors (no blended/anti-aliased in-between values);
+screenshots at both sizes show stair-stepped cabinet chrome, banded planets,
+and pixel-bitmap ship/hearts/HUD digits with no smooth gradients anywhere;
+and zero console/pageerror/requestfailed events across either viewport. A
+second, separately instrumented pass (detailed in moment 8) confirmed
+`AudioContext` gating and captured `playerFire`, `enemyFire`, `chargeReady`,
+`playerDamage`, `enemyDestroyed`, `unstableSplit`, and an organic `defeat`
+firing live with their exact intended waveform and frequency, plus a
+continuously-ticking music scheduler throughout a ~19-second played session.
+`pickup`, `enemyCollision`, and `victory` didn't occur naturally in that
+short a session (no pickup spawned in reach, no direct hull collision, and
+victory needs 60 uninterrupted seconds) — those three were instead confirmed
+by re-reading `game.ts`'s collision-resolution and phase-transition branches
+directly against the same logic the pre-existing `resolveUnstableEnemyRemoval`
+contract test already exercises, which stayed green and untouched throughout.
 
 ## Before you ship
 
