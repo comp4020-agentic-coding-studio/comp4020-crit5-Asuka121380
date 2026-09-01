@@ -1,4 +1,5 @@
 import { ARENA_HEIGHT, ARENA_WIDTH } from "./constants";
+import { initAudio } from "./audio";
 
 export interface PointerState {
   x: number;
@@ -25,6 +26,7 @@ export function attachPointerInput(canvas: HTMLCanvasElement, pointer: PointerSt
   }
 
   canvas.addEventListener("pointerdown", (event) => {
+    initAudio();
     event.preventDefault();
     pointer.restartRequested = true;
     handleMove(event);

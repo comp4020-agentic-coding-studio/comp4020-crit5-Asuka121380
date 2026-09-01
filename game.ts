@@ -28,6 +28,7 @@ import {
   type RuntimeEnemy,
 } from "./enemies";
 import {
+  checkAndAnnounceChargeReady,
   createPlayer,
   damagePlayer,
   healPlayer,
@@ -37,6 +38,7 @@ import {
   updatePlayerMovement,
   type Player,
 } from "./player";
+import type { SoundEventKind } from "./audio";
 import {
   createEnemyProjectile,
   createPlayerProjectile,
@@ -67,6 +69,7 @@ export interface GameState {
   nextPersistentSpawnAt: number;
   nextUnstableSpawnAt: number;
   nextPickupCheckAt: number;
+  sounds: SoundEventKind[];
 }
 
 const playerBounds: Bounds = insetBounds(PLAY_AREA, PLAYER_RADIUS);
@@ -93,6 +96,7 @@ export function createGame(now: number): GameState {
     nextPersistentSpawnAt: now + 900,
     nextUnstableSpawnAt: now + 2400,
     nextPickupCheckAt: now + 3000,
+    sounds: [],
   };
 }
 
@@ -114,11 +118,16 @@ export function updateGame(state: GameState, dt: number, now: number, pointer: P
     const targetY = clamp(pointer.y, playerBounds.minY, playerBounds.maxY);
     updatePlayerMovement(state.player, targetX, targetY, dt, now);
 
+    if (checkAndAnnounceChargeReady(state.player, now)) {
+      state.sounds.push("chargeReady");
+    }
+
     if (shouldFire(state.player, now)) {
       markFired(state.player, now);
       const noseY = state.player.y - PLAYER_RADIUS;
       state.projectiles.push(createPlayerProjectile(state.player.x, noseY));
       state.effects.push(createEffect("muzzle", state.player.x, noseY, now));
+      state.sounds.push("playerFire");
     }
 
     stepEnemies(state, dt, now);
@@ -130,9 +139,11 @@ export function updateGame(state: GameState, dt: number, now: number, pointer: P
     if (state.player.hearts <= 0) {
       state.phase = "lost";
       state.endedAt = now;
+      state.sounds.push("defeat");
     } else if (state.elapsedMs >= VICTORY_DURATION_MS) {
       state.phase = "won";
       state.endedAt = now;
+      state.sounds.push("victory");
     }
   }
 
@@ -161,6 +172,7 @@ function stepEnemies(state: GameState, dt: number, now: number): void {
       state.projectiles.push(
         createEnemyProjectile(enemy.x, enemy.y, state.player.x, state.player.y, enemy.kind, speed),
       );
+      state.sounds.push("enemyFire");
       const interval = enemy.kind === "persistent" ? PERSISTENT_FIRE_INTERVAL_MS : UNSTABLE_FIRE_INTERVAL_MS;
       enemy.nextFireAt = now + interval;
     }
@@ -197,11 +209,14 @@ function resolveCollisions(state: GameState, now: number): void {
         }
         deadEnemyIds.add(enemy.id);
         hit = true;
+        state.sounds.push("impact");
         if (enemy.kind === "unstable") {
           spawned.push(...spawnSplitEnemies(enemy, now));
           state.effects.push(createEffect("split", enemy.x, enemy.y, now));
+          state.sounds.push("unstableSplit");
         } else {
           state.effects.push(createEffect("explosion", enemy.x, enemy.y, now));
+          state.sounds.push("enemyDestroyed");
         }
         break;
       }
@@ -212,6 +227,8 @@ function resolveCollisions(state: GameState, now: number): void {
     ) {
       damagePlayer(state.player, now);
       state.effects.push(createEffect("hit", state.player.x, state.player.y, now));
+      state.sounds.push("impact");
+      state.sounds.push("playerDamage");
       continue;
     }
 
@@ -231,6 +248,7 @@ function resolveCollisions(state: GameState, now: number): void {
         state.effects.push(createEffect("hit", state.player.x, state.player.y, now));
       }
       state.effects.push(createEffect("explosion", enemy.x, enemy.y, now));
+      state.sounds.push("enemyCollision");
       continue; // direct collisions remove the enemy without the split rule
     }
     survivors.push(enemy);
@@ -243,6 +261,7 @@ function resolveCollisions(state: GameState, now: number): void {
   ) {
     healPlayer(state.player, PICKUP_HEAL_AMOUNT);
     state.effects.push(createEffect("heal", state.player.x, state.player.y, now));
+    state.sounds.push("pickup");
     state.pickup = null;
   }
 }

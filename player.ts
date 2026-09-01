@@ -18,6 +18,7 @@ export interface Player {
   invulnerableUntil: number;
   lastFireAt: number;
   engineFlare: number; // smoothed 0..1, for rendering only
+  chargeAnnounced: boolean; // latched true once a charge cycle has announced "ready"
 }
 
 export function createPlayer(x: number, y: number, now: number): Player {
@@ -32,6 +33,7 @@ export function createPlayer(x: number, y: number, now: number): Player {
     invulnerableUntil: 0,
     lastFireAt: 0,
     engineFlare: 0.1,
+    chargeAnnounced: false,
   };
 }
 
@@ -56,6 +58,7 @@ export function updatePlayerMovement(
   if (moving) {
     player.isMoving = true;
     player.charging = false;
+    player.chargeAnnounced = false;
   } else {
     player.isMoving = false;
     if (!player.charging) {
@@ -71,6 +74,16 @@ export function updatePlayerMovement(
 export function chargeProgress(player: Player, now: number): number {
   if (!player.charging) return 0;
   return Math.min(1, (now - player.chargeStart) / PLAYER_CHARGE_MS);
+}
+
+/** Latches true the instant a charge cycle first reaches full; resets once
+ * charging stops, so it fires exactly once per charge-up. */
+export function checkAndAnnounceChargeReady(player: Player, now: number): boolean {
+  if (!player.charging) return false;
+  if (player.chargeAnnounced) return false;
+  if (chargeProgress(player, now) < 1) return false;
+  player.chargeAnnounced = true;
+  return true;
 }
 
 export function shouldFire(player: Player, now: number): boolean {

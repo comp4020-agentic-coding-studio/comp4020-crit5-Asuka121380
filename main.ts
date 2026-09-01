@@ -2,6 +2,7 @@ import { ARENA_HEIGHT, ARENA_WIDTH } from "./constants";
 import { createGame, updateGame, type GameState } from "./game";
 import { attachPointerInput, type PointerState } from "./input";
 import { draw } from "./render";
+import { playSound } from "./audio";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) throw new Error("missing #game canvas");
@@ -49,6 +50,8 @@ function frame(now: number): void {
   }
 
   updateGame(state, dt, now, pointer);
+  for (const kind of state.sounds) playSound(kind);
+  state.sounds = [];
   draw(ctx!, state, now);
   requestAnimationFrame(frame);
 }
